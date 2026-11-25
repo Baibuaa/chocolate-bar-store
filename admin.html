@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบจัดการออเดอร์ & พิมพ์ใบปะหน้าพัสดุ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea { position: absolute; left: 0; top: 0; width: 100%; border: 2px solid #000; padding: 20px; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+
+  <div class="max-w-5xl mx-auto">
+    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+      <h1 class="text-2xl font-bold">📦 ระบบหยิบสินค้า แพ็ค และจ่าหน้าพัสดุ (Fulfillment)</h1>
+      <div class="space-x-2">
+        <button onclick="loadOrders()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">รีเฟรชข้อมูล</button>
+        <a href="index.html" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800 transition">กลับหน้าร้าน</a>
+      </div>
+    </div>
+
+    <!-- ตารางรายการออเดอร์ -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-stone-800 text-white text-sm">
+            <th class="p-3">Order ID</th>
+            <th class="p-3">ลูกค้า / เบอร์โทร</th>
+            <th class="p-3">รายการที่ต้องหยิบ (Picking List)</th>
+            <th class="p-3">ยอดรวม</th>
+            <th class="p-3">สถานะ</th>
+            <th class="p-3 text-center">จัดการ</th>
+          </tr>
+        </thead>
+        <tbody id="orderTable" class="divide-y text-sm">
+          <tr><td colspan="6" class="p-6 text-center text-gray-500">กำลังโหลดข้อมูลจาก Google Sheets...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal ใบจ่าหน้าพัสดุสำหรับพิมพ์ -->
+  <div id="labelModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-lg w-full p-6">
+      <div id="printArea" class="border-2 border-dashed border-gray-800 p-5 rounded">
+        <div class="flex justify-between border-b-2 border-black pb-2 mb-3">
+          <div>
+            <p class="font-bold text-lg">ผู้ส่ง: CHOCO CRAFT SHOP</p>
+            <p class="text-xs">99/9 ถ.สุขุมวิท กรุงเทพฯ 10110 โทร. 02-999-9999</p>
+          </div>
+          <div class="text-right">
+            <span class="font-mono font-bold text-sm bg-black text-white px-2 py-1" id="lblOrderId"></span>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <p class="text-xs text-gray-500 font-bold">กรุณาส่ง (ผู้รับ):</p>
+          <p class="text-lg font-bold" id="lblName"></p>
+          <p class="font-semibold" id="lblPhone"></p>
+          <p class="text-sm mt-1" id="lblAddress"></p>
+        </div>
+
+        <div class="border-t border-gray-400 pt-2 text-xs">
+          <p class="font-bold mb-1">รายการสินค้าในกล่อง (Check-list การแพ็ค):</p>
+          <ul id="lblItems" class="list-disc pl-5 space-y-0.5"></ul>
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end space-x-2">
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">ปิดหน้าต่าง</button>
+        <button onclick="window.print()" class="px-4 py-2 bg-green-600 text-white font-bold rounded hover:bg-green-700">🖨️ สั่งพิมพ์ใบปะหน้า</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SCRIPT_URL = "YOUR_GOOGLE_SCRIPT_URL"; // <-- นำ URL ของ Apps Script มาวางตรงนี้
+    let allOrders = [];
+
+    function loadOrders() {
+      fetch(SCRIPT_URL)
+        .then(res => res.json())
+        .then(data => {
+          allOrders = data.reverse();
+          renderTable();
+        })
+        .catch(() => {
+          document.getElementById("orderTable").innerHTML = `<tr><td colspan="6" class="p-6 text-center text-red-500">กรุณาใส่ SCRIPT_URL ในโค้ดก่อนใช้งาน</td></tr>`;
+        });
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("orderTable");
+      if (allOrders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center">ยังไม่มีคำสั่งซื้อ</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = allOrders.map((o, idx) => `
+        <tr class="hover:bg-gray-50">
+          <td class="p-3 font-mono font-bold">${o.OrderID}<br><span class="text-xs text-gray-400 font-normal">${o.Timestamp}</span></td>
+          <td class="p-3"><strong>${o.CustomerName}</strong><br><span class="text-gray-500">${o.Phone}</span></td>
+          <td class="p-3">
+            ${o.SKU1_DarkQty > 0 ? `<span class="inline-block bg-stone-200 px-2 py-0.5 rounded text-xs mb-1">CHOC-DK75 (Dark): <b>${o.SKU1_DarkQty}</b> แท่ง</span><br>` : ''}
+            ${o.SKU2_MilkQty > 0 ? `<span class="inline-block bg-amber-200 px-2 py-0.5 rounded text-xs">CHOC-MK01 (Milk): <b>${o.SKU2_MilkQty}</b> แท่ง</span>` : ''}
+          </td>
+          <td class="p-3 font-bold">${o.TotalPrice} ฿</td>
+          <td class="p-3">
+            <span class="px-2 py-1 rounded text-xs font-bold ${o.Status === 'แพ็คแล้ว/พร้อมส่ง' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+              ${o.Status}
+            </span>
+          </td>
+          <td class="p-3 text-center space-x-1">
+            <button onclick="openLabel(${idx})" class="bg-indigo-600 text-white px-2.5 py-1 rounded text-xs hover:bg-indigo-700">ใบจ่าหน้า</button>
+            ${o.Status !== 'แพ็คแล้ว/พร้อมส่ง' ? 
+              `<button onclick="markPacked('${o.OrderID}')" class="bg-green-600 text-white px-2.5 py-1 rounded text-xs hover:bg-green-700">ยืนยันแพ็คเสร็จ</button>` : ''}
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function markPacked(orderId) {
+      fetch(`${SCRIPT_URL}?action=updateStatus&orderId=${orderId}&status=${encodeURIComponent('แพ็คแล้ว/พร้อมส่ง')}`)
+        .then(() => loadOrders());
+    }
+
+    function openLabel(idx) {
+      const o = allOrders[idx];
+      document.getElementById("lblOrderId").innerText = o.OrderID;
+      document.getElementById("lblName").innerText = o.CustomerName;
+      document.getElementById("lblPhone").innerText = "โทร: " + o.Phone;
+      document.getElementById("lblAddress").innerText = o.Address;
+
+      let itemsHtml = "";
+      if (o.SKU1_DarkQty > 0) itemsHtml += `<li>[ ] 75% Dark Chocolate (CHOC-DK75) x ${o.SKU1_DarkQty} แท่ง</li>`;
+      if (o.SKU2_MilkQty > 0) itemsHtml += `<li>[ ] Almond Milk Chocolate (CHOC-MK01) x ${o.SKU2_MilkQty} แท่ง</li>`;
+      document.getElementById("lblItems").innerHTML = itemsHtml;
+
+      document.getElementById("labelModal").classList.remove("hidden");
+      document.getElementById("labelModal").classList.add("flex");
+    }
+
+    function closeModal() {
+      document.getElementById("labelModal").classList.add("hidden");
+      document.getElementById("labelModal").classList.remove("flex");
+    }
+
+    loadOrders();
+  </script>
+</body>
+</html>
